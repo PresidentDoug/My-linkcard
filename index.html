@@ -223,7 +223,8 @@
             if (!window.fb) return;
             try {
                 const { db, appId } = window.fb;
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', id);
+                // Path corrected to 6 segments: artifacts/{appId}/public/data/cards/{id}
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'cards', id);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -266,7 +267,8 @@
 
             try {
                 const cardId = currentDocId || (Date.now().toString(36) + Math.random().toString(36).substr(2, 5));
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', cardId);
+                // Path corrected to 6 segments: artifacts/{appId}/public/data/cards/{cardId}
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'cards', cardId);
                 
                 await setDoc(docRef, {
                     name: inputName.value, job: inputJob.value, bio: inputBio.value,
@@ -287,7 +289,7 @@
                 document.getElementById('qr-status').innerText = "Scannable link is live!";
             } catch (e) { 
                 window.showToast("Publish Error: " + e.message);
-                console.error(e); 
+                console.error("Full Error:", e); 
             } 
             finally { 
                 btn.disabled = false; 
