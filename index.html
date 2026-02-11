@@ -14,7 +14,6 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Your custom Firebase configuration
         const MY_FIREBASE_CONFIG = {
             apiKey: "AIzaSyCHGHpLgbDv1gfUyhSQkaR0SxBpx5S6rZI",
             authDomain: "linkcard-9bb87.firebaseapp.com",
@@ -28,15 +27,19 @@
         const app = initializeApp(MY_FIREBASE_CONFIG);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = 'link-card-live'; // Hardcoded for your specific deployment
+        const appId = 'link-card-live'; 
 
         window.fb = { auth, db, appId, user: null };
 
         window.initFirebase = async () => {
             try {
-                await signInAnonymously(auth);
+                const cred = await signInAnonymously(auth);
+                window.fb.user = cred.user;
+                return cred.user;
             } catch(e) { 
-                console.error("Auth failed. Make sure Anonymous Auth is enabled in Firebase Console:", e); 
+                console.error("Auth failed:", e);
+                window.showToast("Auth Error: " + e.message);
+                return null;
             }
         };
 
@@ -179,7 +182,7 @@
         </div>
     </div>
 
-    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl transition-all opacity-0 translate-y-10 pointer-events-none z-50"></div>
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl transition-all opacity-0 translate-y-10 pointer-events-none z-50 text-center min-w-[300px]"></div>
 
     <script type="module">
         import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -233,13 +236,30 @@
                     enterViewerMode();
                     updatePreview();
                 }
-            } catch (e) { console.error("Cloud load error:", e); }
+            } catch (e) { 
+                console.error("Cloud load error:", e);
+                window.showToast("Load Error: " + e.message);
+            }
         }
 
         window.publishCard = async () => {
-            if (!window.fb) return;
-            const { db, appId, user } = window.fb;
-            if (!user) await window.initFirebase();
+            if (!window.fb) {
+                window.showToast("App initialization failed. Please refresh.");
+                return;
+            }
+            const { db, appId } = window.fb;
+            let user = window.fb.user;
+
+            if (!user) {
+                window.showToast("Authenticating...");
+                user = await window.initFirebase();
+            }
+
+            if (!user) {
+                window.showToast("Authentication failed. Ensure 'Anonymous' is enabled in Firebase Console.");
+                return;
+            }
+
             const btn = document.getElementById('publish-btn');
             btn.disabled = true;
             document.getElementById('publish-spinner').classList.remove('hidden');
@@ -247,29 +267,39 @@
             try {
                 const cardId = currentDocId || (Date.now().toString(36) + Math.random().toString(36).substr(2, 5));
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', cardId);
+                
                 await setDoc(docRef, {
                     name: inputName.value, job: inputJob.value, bio: inputBio.value,
                     color: inputColor.value, links: userLinks.filter(l => l.url),
-                    owner: window.fb.user?.uid || 'anon', updatedAt: Date.now()
+                    owner: user.uid, updatedAt: Date.now()
                 });
+
                 currentDocId = cardId;
                 generateQRCode(cardId);
-                showToast("Card published live!");
+                window.showToast("Card published live!");
+                
                 const url = new URL(window.location);
                 url.searchParams.set('id', cardId);
                 window.history.pushState({}, '', url);
+                
                 document.getElementById('qr-container').classList.remove('hidden');
                 document.getElementById('qr-placeholder').classList.add('hidden');
                 document.getElementById('qr-status').innerText = "Scannable link is live!";
-            } catch (e) { showToast("Failed to publish. Check Firebase rules."); console.error(e); } 
-            finally { btn.disabled = false; document.getElementById('publish-spinner').classList.add('hidden'); }
+            } catch (e) { 
+                window.showToast("Publish Error: " + e.message);
+                console.error(e); 
+            } 
+            finally { 
+                btn.disabled = false; 
+                document.getElementById('publish-spinner').classList.add('hidden'); 
+            }
         };
 
         function enterViewerMode() {
             isViewerMode = true;
             document.body.classList.add('viewer-mode');
             document.getElementById('viewer-controls').classList.remove('hidden');
-            document.getElementById('app-subtitle').innerText = "LinkCard Digital Profile";
+            document.getElementById('app-subtitle').innerText = "Verified LinkCard Profile";
         }
 
         window.exitViewer = () => { window.location.href = window.location.pathname; };
@@ -345,9 +375,9 @@
             }
         }
 
-        function showToast(msg) {
+        window.showToast = (msg) => {
             const t = document.getElementById('toast'); t.innerText = msg; t.classList.remove('opacity-0', 'translate-y-10');
-            setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 3000);
+            setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 5000);
         }
 
         function adjustColor(hex, amt) {
@@ -362,7 +392,7 @@
         inputColor.addEventListener('input', () => { updatePreview(); saveToStorage(); });
         document.getElementById('add-link-btn').addEventListener('click', () => { userLinks.push({ id: Date.now(), platform: 'website', url: '' }); renderInputs(); updatePreview(); });
 
-        if (window.initFirebase) window.initFirebase();
+        window.initFirebase();
     </script>
 </body>
 </html>
