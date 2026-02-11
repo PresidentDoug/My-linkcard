@@ -11,54 +11,39 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        /** * SETUP INSTRUCTIONS:
-         * 1. Go to console.firebase.google.com
-         * 2. Create a project and get your "Web App" config.
-         * 3. Replace 'null' below with your config object.
-         */
+        // Your custom Firebase configuration
         const MY_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCHGHpLgbDv1gfUyhSQkaR0SxBpx5S6rZI",
-  authDomain: "linkcard-9bb87.firebaseapp.com",
-  projectId: "linkcard-9bb87",
-  storageBucket: "linkcard-9bb87.firebasestorage.app",
-  messagingSenderId: "859925443097",
-  appId: "1:859925443097:web:f5755ba414a058cfeb3088",
-  measurementId: "G-LS7RVNP2YN"
-}; 
+            apiKey: "AIzaSyCHGHpLgbDv1gfUyhSQkaR0SxBpx5S6rZI",
+            authDomain: "linkcard-9bb87.firebaseapp.com",
+            projectId: "linkcard-9bb87",
+            storageBucket: "linkcard-9bb87.firebasestorage.app",
+            messagingSenderId: "859925443097",
+            appId: "1:859925443097:web:f5755ba414a058cfeb3088",
+            measurementId: "G-LS7RVNP2YN"
+        };
 
-        // Environment detection logic
-        let config;
-        try {
-            config = MY_FIREBASE_CONFIG || JSON.parse(__firebase_config);
-        } catch (e) {
-            console.error("Firebase Config Missing. Please see deployment_guide.md Step 6.");
-        }
+        const app = initializeApp(MY_FIREBASE_CONFIG);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'link-card-live'; // Hardcoded for your specific deployment
 
-        if (config) {
-            const app = initializeApp(config);
-            const auth = getAuth(app);
-            const db = getFirestore(app);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'link-card-live';
+        window.fb = { auth, db, appId, user: null };
 
-            window.fb = { auth, db, appId, user: null };
-            window.initFirebase = async () => {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch(e) { console.error("Auth failed:", e); }
-            };
+        window.initFirebase = async () => {
+            try {
+                await signInAnonymously(auth);
+            } catch(e) { 
+                console.error("Auth failed. Make sure Anonymous Auth is enabled in Firebase Console:", e); 
+            }
+        };
 
-            onAuthStateChanged(auth, (user) => {
-                window.fb.user = user;
-                if (user) window.dispatchEvent(new CustomEvent('authReady', { detail: user }));
-            });
-        }
+        onAuthStateChanged(auth, (user) => {
+            window.fb.user = user;
+            if (user) window.dispatchEvent(new CustomEvent('authReady', { detail: user }));
+        });
     </script>
 
     <style>
@@ -83,7 +68,7 @@
             <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
                 Link<span class="text-indigo-600">Card</span>
             </h1>
-            <p id="app-subtitle" class="mt-4 text-lg text-slate-600">Your digital identity, hosted in the cloud.</p>
+            <p id="app-subtitle" class="mt-4 text-lg text-slate-600">Your digital identity, live and global.</p>
             <div id="viewer-controls" class="hidden mt-6 flex justify-center gap-4">
                 <button onclick="exitViewer()" class="px-6 py-2 bg-white border border-slate-200 rounded-full text-sm font-semibold text-slate-600 hover:bg-slate-50 shadow-sm transition-all">
                     <i class="fas fa-plus mr-2"></i> Create Your Own Card
@@ -248,14 +233,11 @@
                     enterViewerMode();
                     updatePreview();
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Cloud load error:", e); }
         }
 
         window.publishCard = async () => {
-            if (!window.fb) {
-                showToast("Firebase Config Missing (See deployment_guide.md)");
-                return;
-            }
+            if (!window.fb) return;
             const { db, appId, user } = window.fb;
             if (!user) await window.initFirebase();
             const btn = document.getElementById('publish-btn');
@@ -268,7 +250,7 @@
                 await setDoc(docRef, {
                     name: inputName.value, job: inputJob.value, bio: inputBio.value,
                     color: inputColor.value, links: userLinks.filter(l => l.url),
-                    owner: user.uid, updatedAt: Date.now()
+                    owner: window.fb.user?.uid || 'anon', updatedAt: Date.now()
                 });
                 currentDocId = cardId;
                 generateQRCode(cardId);
@@ -278,7 +260,8 @@
                 window.history.pushState({}, '', url);
                 document.getElementById('qr-container').classList.remove('hidden');
                 document.getElementById('qr-placeholder').classList.add('hidden');
-            } catch (e) { showToast("Failed to publish."); console.error(e); } 
+                document.getElementById('qr-status').innerText = "Scannable link is live!";
+            } catch (e) { showToast("Failed to publish. Check Firebase rules."); console.error(e); } 
             finally { btn.disabled = false; document.getElementById('publish-spinner').classList.add('hidden'); }
         };
 
@@ -286,6 +269,7 @@
             isViewerMode = true;
             document.body.classList.add('viewer-mode');
             document.getElementById('viewer-controls').classList.remove('hidden');
+            document.getElementById('app-subtitle').innerText = "LinkCard Digital Profile";
         }
 
         window.exitViewer = () => { window.location.href = window.location.pathname; };
@@ -343,11 +327,13 @@
         }
 
         window.toggleQR = () => { document.getElementById('qr-overlay').classList.toggle('hidden'); document.getElementById('qr-overlay').classList.toggle('flex'); };
+        
         window.downloadVCF = () => {
-            const vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${inputName.value}\nEND:VCARD`;
+            const name = inputName.value || 'Contact';
+            const vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nTITLE:${inputJob.value}\nEND:VCARD`;
             const blob = new Blob([vcf], { type: 'text/vcard' });
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `contact.vcf`; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = `${name}.vcf`; a.click();
         };
 
         function saveToStorage() { localStorage.setItem('linkcard_data', JSON.stringify({ name: inputName.value, job: inputJob.value, bio: inputBio.value, color: inputColor.value, links: userLinks })); }
@@ -355,13 +341,13 @@
             const saved = localStorage.getItem('linkcard_data');
             if (saved) {
                 const data = JSON.parse(saved);
-                inputName.value = data.name; inputJob.value = data.job; inputBio.value = data.bio; inputColor.value = data.color; userLinks = data.links;
+                inputName.value = data.name || ''; inputJob.value = data.job || ''; inputBio.value = data.bio || ''; inputColor.value = data.color || '#6366f1'; userLinks = data.links || [];
             }
         }
 
         function showToast(msg) {
-            const t = document.getElementById('toast'); t.innerText = msg; t.classList.remove('opacity-0');
-            setTimeout(() => t.classList.add('opacity-0'), 3000);
+            const t = document.getElementById('toast'); t.innerText = msg; t.classList.remove('opacity-0', 'translate-y-10');
+            setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 3000);
         }
 
         function adjustColor(hex, amt) {
